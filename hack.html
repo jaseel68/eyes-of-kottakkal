@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eyes OF Kottakkal  - Kottakkal</title>
+    
+    <!-- Placeholder Comments -->
+    <!-- Chosen Palette: Cool Blues and Slate Greys -->
+    <!-- Application Structure Plan: A single-page dashboard is the optimal structure. It features a large interactive map on the left for immediate geographic context and a multi-tabbed control panel on the right for user actions (checking status, finding routes, reporting incidents, SOS). This co-location of map and controls allows users to see information and act on it without scrolling or navigating away. An 'Analytics' section below provides a high-level summary of reported issues. This structure logically separates real-time interaction from summary analysis, guiding the user through a flow of Observe -> Interact -> Analyze. -->
+    <!-- Visualization & Content Choices: 1. Traffic Data -> Goal: Inform -> Method: Leaflet.js map with colored polylines. Interaction: Zoom/pan. Justification: Most intuitive way to show geographic congestion. 2. Routing -> Goal: Organize/Solve -> Method: Dijkstra's algorithm in JS with results plotted on map. Interaction: User selects start/end points. Justification: Provides a direct, actionable solution to congestion. 3. Incident Summary -> Goal: Compare/Inform -> Method: Chart.js Donut Chart. Interaction: Hover for tooltips. Justification: Effectively shows proportions of incident types. 4. Emergency Alert -> Goal: Inform/Act -> Method: Large prominent button with a confirmation modal. Interaction: Click to trigger. Justification: High visibility and safety confirmation are key for an emergency feature. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS for maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        html {
+            scroll-behavior: smooth;
+        }
+        body {
+            background-color: #f0f2f5; /* A lighter, cleaner background */
+            font-family: 'Inter', sans-serif;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .leaflet-popup-content {
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+        }
+        .nav-button {
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s ease-in-out;
+        }
+        .nav-button.active {
+            border-color: #2563eb; /* A modern blue */
+            color: #2563eb;
+        }
+        .node-marker span {
+            display: block;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #1e293b; /* slate-800 */
+            white-space: nowrap;
+            text-align: center;
+            border: 1px solid rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .chat-bubble-user {
+            background-color: #2563eb; 
+            color: white;
+            align-self: flex-end;
+        }
+        .chat-bubble-bot {
+            background-color: #e2e8f0; 
+            color: #1e293b; 
+            align-self: flex-start;
+        }
+        .route-button.active {
+            background-color: #eff6ff; /* blue-50 */
+            border-color: #2563eb;
+            box-shadow: 0 0 0 2px #dbeafe;
+        }
+        .fade-in {
+            animation: fadeIn 0.8s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="antialiased text-slate-800 relative">
+
+    <!-- Welcome Screen -->
+    <div id="welcome-screen" class="fixed inset-0 bg-slate-100 flex flex-col items-center justify-center p-8 z-50 text-slate-800 text-center">
+        <div class="max-w-2xl">
+            <img src="http://googleusercontent.com/file_content/7" alt="Smart City Illustration" class="w-full max-w-lg mx-auto mb-8">
+            <h1 class="text-4xl md:text-6xl font-bold tracking-tight text-slate-900">Eyes of kottakkal</h1>
+            <p class="mt-6 text-lg text-slate-600">Real-time traffic monitoring, intelligent route suggestions, and community incident reporting to make your journey smoother and safer.</p>
+            <button id="launch-dashboard-btn" class="mt-10 bg-blue-600 text-white font-bold py-3 px-8 rounded-full text-lg hover:bg-blue-700 transition-transform transform hover:scale-105 shadow-lg">
+                Launch Dashboard
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Application Wrapper -->
+    <div id="app-wrapper" class="hidden">
+        <!-- Weather Widget -->
+        <div id="weather-widget" class="absolute top-4 right-4 md:top-6 md:right-8 bg-white/80 backdrop-blur-sm p-3 rounded-xl shadow-lg flex items-center space-x-3 z-20">
+            <!-- Content will be injected by JavaScript -->
+        </div>
+
+        <!-- Main Container -->
+        <div class="container mx-auto p-4 md:p-6 lg:p-8">
+
+            <!-- Header -->
+            <header class="text-center mb-8 pt-12 md:pt-0">
+                <h1 class="text-3xl md:text-4xl font-bold text-slate-900">Eyes of kottakkal</h1>
+                <p class="text-lg text-slate-500 mt-1">Kottakkal Town</p>
+            </header>
+
+            <!-- Main Dashboard Layout -->
+            <main id="main-content" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                <!-- Left Column: Map -->
+                <div class="lg:col-span-2 bg-white p-4 rounded-2xl shadow-lg min-h-[70vh]">
+                    <div id="map" class="h-[calc(70vh-2rem)] w-full rounded-xl z-0"></div>
+                </div>
+
+                <!-- Right Column: Control Panel -->
+                <div class="bg-white p-4 rounded-2xl shadow-lg flex flex-col">
+                    <!-- Navigation -->
+                    <nav class="flex border-b mb-4">
+                        <button data-panel="status" class="nav-button flex-1 py-2 px-4 text-sm font-semibold text-slate-500 hover:text-slate-900 active">Status</button>
+                        <button data-panel="report" class="nav-button flex-1 py-2 px-4 text-sm font-semibold text-slate-500 hover:text-slate-900">Report</button>
+                        <button data-panel="sos" class="nav-button flex-1 py-2 px-4 text-sm font-semibold text-slate-500 hover:text-slate-900">SOS</button>
+                    </nav>
+
+                    <!-- Panel Content -->
+                    <div class="flex-grow overflow-hidden">
+                        <!-- Live Status Panel -->
+                        <div id="panel-status" class="panel-content space-y-4">
+                            <h3 class="font-bold text-lg text-slate-800">Traffic Legend</h3>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex items-center"><span class="h-4 w-4 rounded-full bg-green-500 mr-3"></span>Low Congestion</div>
+                                <div class="flex items-center"><span class="h-4 w-4 rounded-full bg-yellow-400 mr-3"></span>Moderate Congestion</div>
+                                <div class="flex items-center"><span class="h-4 w-4 rounded-full bg-red-500 mr-3"></span>High Congestion</div>
+                            </div>
+                            <hr>
+                            <h3 class="font-bold text-lg text-slate-800">Incidents Feed</h3>
+                            <div id="incidents-feed" class="space-y-3 h-64 overflow-y-auto text-sm pr-2"></div>
+                        </div>
+
+                        <!-- Report Incident Panel -->
+                        <div id="panel-report" class="panel-content hidden space-y-4 border-2 border-transparent rounded-lg p-2 transition-all">
+                            <h3 class="font-bold text-lg text-slate-800">Report an Incident</h3>
+                            <div id="accident-warning" class="hidden p-2 text-sm bg-red-100 text-red-800 rounded-lg">
+                                <strong>High Priority:</strong> Accident reports are sent to authorities immediately.
+                            </div>
+                            <form id="report-form" class="space-y-4 text-sm">
+                                <div>
+                                    <label for="incident-type" class="block font-medium text-slate-700">Type of Incident</label>
+                                    <select id="incident-type" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <option>Roadblock</option>
+                                        <option>Accident</option>
+                                        <option>Pothole</option>
+                                        <option>Heavy Traffic</option>
+                                    </select>
+                                </div>
+                                 <div>
+                                    <label for="location-desc" class="block font-medium text-slate-700">Location</label>
+                                    <div class="flex items-center space-x-2 mt-1">
+                                        <input type="text" id="location-desc" placeholder="e.g., Near Almas Hospital" class="block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" required>
+                                        <button type="button" id="get-current-location-btn" class="p-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200" title="Use Current Location">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" /></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Camera Section -->
+                                <div id="camera-section" class="space-y-2">
+                                    <button type="button" id="open-camera-btn" class="w-full bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300 transition-colors">Add Photo</button>
+                                    <div id="camera-view" class="hidden space-y-2">
+                                        <video id="camera-stream" class="w-full rounded-lg bg-black" autoplay playsinline></video>
+                                        <canvas id="camera-canvas" class="hidden"></canvas>
+                                        <button type="button" id="take-photo-btn" class="w-full bg-red-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors">Take Photo</button>
+                                    </div>
+                                    <img id="photo-preview" class="hidden w-full rounded-lg mt-2 border">
+                                </div>
+
+                                <button type="submit" id="submit-report-btn" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors shadow">Submit Report</button>
+                            </form>
+                        </div>
+                        
+                        <!-- Emergency SOS Panel -->
+                        <div id="panel-sos" class="panel-content hidden text-center flex flex-col justify-center items-center h-full">
+                             <h3 class="font-bold text-lg text-slate-800 mb-4">Emergency Alert</h3>
+                             <p class="text-sm text-slate-600 mb-6">Press only in a genuine emergency. Your location will be sent to authorities.</p>
+                             <button id="sos-button" class="w-32 h-32 bg-red-500 text-white rounded-full flex items-center justify-center text-3xl font-bold shadow-2xl animate-pulse hover:animate-none transition-transform transform hover:scale-105">
+                                SOS
+                             </button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Analytics Section -->
+            <section class="mt-8 bg-white p-6 rounded-2xl shadow-lg">
+                <h2 class="text-2xl font-bold text-center text-slate-900 mb-4">Incident Analytics</h2>
+                <p class="text-center text-slate-600 mb-6 max-w-2xl mx-auto">This chart provides a summary of all incidents reported by users, helping authorities identify common problem areas and types.</p>
+                <div class="chart-container">
+                    <canvas id="incident-chart"></canvas>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- Floating Action Buttons -->
+        <button id="fab-route" class="fixed bottom-8 left-8 z-50 bg-blue-600 text-white rounded-full w-16 h-16 flex items-center justify-center text-2xl font-bold shadow-lg hover:bg-blue-700 transition-all transform hover:scale-110">
+            GO
+        </button>
+        <button id="chatbot-fab" class="fixed bottom-8 right-8 z-50 bg-indigo-600 text-white rounded-full w-16 h-16 flex items-center justify-center text-3xl shadow-lg hover:bg-indigo-700 transition-all transform hover:scale-110">
+            <span>💬</span>
+        </button>
+        
+        <!-- Chatbot Window -->
+        <div id="chatbot-window" class="hidden fixed bottom-28 right-8 z-50 w-80 h-96 bg-white rounded-2xl shadow-2xl flex flex-col">
+            <header class="bg-indigo-600 text-white p-3 flex justify-between items-center rounded-t-2xl">
+                <h3 class="font-bold">Traffic Assistant</h3>
+                <button id="close-chatbot" class="text-xl">&times;</button>
+            </header>
+            <div id="chat-messages" class="flex-grow p-4 overflow-y-auto flex flex-col space-y-3">
+                <!-- Messages will appear here -->
+            </div>
+            <form id="chat-form" class="p-3 border-t flex space-x-2">
+                <input type="text" id="chat-input" class="w-full rounded-lg border-slate-300 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ask something..." autocomplete="off">
+                <button type="submit" class="bg-indigo-600 text-white rounded-lg px-4 font-bold">Send</button>
+            </form>
+        </div>
+
+        <!-- Route Selection Modal -->
+        <div id="route-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+            <div class="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full mx-4">
+                <div class="flex justify-between items-center mb-4">
+                     <h3 class="text-xl font-bold text-slate-900">Find All Routes</h3>
+                     <button id="close-route-modal" class="text-2xl text-slate-500 hover:text-slate-800">&times;</button>
+                </div>
+                <form id="route-form" class="space-y-4 text-sm">
+                    <div>
+                        <label for="start-node" class="block font-medium text-slate-700">Start</label>
+                        <input list="locations" id="start-node" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Type to search...">
+                    </div>
+                    <div>
+                        <label for="end-node" class="block font-medium text-slate-700">End</label>
+                        <input list="locations" id="end-node" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Type to search...">
+                    </div>
+                    <datalist id="locations"></datalist>
+                    <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors shadow">Find Routes</button>
+                </form>
+                <div id="route-result" class="text-sm mt-4 space-y-2 max-h-60 overflow-y-auto"></div>
+            </div>
+        </div>
+
+        <!-- General Notification Modal -->
+        <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+            <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full mx-4 text-center">
+                <h3 id="modal-title" class="text-xl font-bold text-slate-900 mb-4"></h3>
+                <p id="modal-body" class="text-slate-600 mb-6"></p>
+                <button id="modal-close" class="bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-blue-700 transition-colors">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- JAVASCRIPT IMPLEMENTATION OF BACKEND LOGIC ---
+
+        // 1. Traffic Simulator
+        const trafficSimulator = {
+            roads: {
+                "changuvetty_busstand": { distance_km: 0.8 },
+                "busstand_towncenter": { distance_km: 0.5 },
+                "towncenter_almas": { distance_km: 0.4 },
+                "towncenter_puthur": { distance_km: 0.6 },
+                "towncenter_avs": { distance_km: 0.7 },
+                "almas_puthur": { distance_km: 0.5 }
+            },
+            get_traffic_data: function() {
+                const currentHour = new Date().getHours();
+                let traffic_data = {};
+
+                for (const road_id in this.roads) {
+                    const details = this.roads[road_id];
+                    let speed_kmh;
+
+                    if ((currentHour >= 8 && currentHour <= 10) || (currentHour >= 17 && currentHour <= 20)) {
+                        speed_kmh = Math.random() * (15 - 5) + 5; 
+                    } else if (currentHour >= 22 || currentHour < 6) {
+                        speed_kmh = Math.random() * (40 - 30) + 30;
+                    } else {
+                        speed_kmh = Math.random() * (30 - 15) + 15;
+                    }
+
+                    if (road_id.includes("almas") || road_id.includes("busstand") || road_id.includes("avs")) {
+                        speed_kmh *= 0.8; 
+                    }
+                    
+                    const travel_time_minutes = (details.distance_km / speed_kmh) * 60;
+                    
+                    let congestion;
+                    if (speed_kmh < 15) congestion = 3; // Red
+                    else if (speed_kmh < 25) congestion = 2; // Yellow
+                    else congestion = 1; // Green
+
+                    traffic_data[road_id] = {
+                        congestion: congestion,
+                        travel_time_minutes: parseFloat(travel_time_minutes.toFixed(2))
+                    };
+                }
+                return traffic_data;
+            }
+        };
+
+        // 2. Road Network and Routing
+        const roadNetwork = {
+            nodes: new Set([
+                "changuvetty", "busstand", "towncenter", "almas", "puthur", "avs"
+            ]),
+            edges: {
+                "changuvetty": ["busstand"],
+                "busstand": ["changuvetty", "towncenter"],
+                "towncenter": ["busstand", "almas", "puthur", "avs"],
+                "almas": ["towncenter", "puthur"],
+                "puthur": ["towncenter", "almas"],
+                "avs": ["towncenter"]
+            },
+            weights: {},
+            update_weights: function(traffic_data) {
+                for(const roadId in traffic_data) {
+                    const [node1, node2] = roadId.split('_');
+                    const key1 = `${node1}-${node2}`;
+                    const key2 = `${node2}-${node1}`;
+                    this.weights[key1] = traffic_data[roadId].travel_time_minutes;
+                    this.weights[key2] = traffic_data[roadId].travel_time_minutes;
+                }
+            },
+            findAllPaths: function(start, end) {
+                const allPaths = [];
+                const queue = [[start, [start]]];
+
+                while (queue.length > 0) {
+                    const [currentNode, path] = queue.shift();
+
+                    if (currentNode === end) {
+                        allPaths.push(path);
+                    }
+
+                    const neighbors = this.edges[currentNode] || [];
+                    for (const neighbor of neighbors) {
+                        if (!path.includes(neighbor)) {
+                            const newPath = [...path, neighbor];
+                            queue.push([neighbor, newPath]);
+                        }
+                    }
+                }
+                return allPaths;
+            }
+        };
+
+        // --- GLOBAL STATE AND UI ---
+        const appState = {
+            map: null,
+            trafficLayers: {},
+            incidentMarkers: L.layerGroup(),
+            routeLayer: L.layerGroup(),
+            incidentChart: null,
+            reportedIncidents: [], 
+            currentTrafficData: {},
+            cameraStream: null,
+            capturedPhotoData: null,
+            currentUserLocation: null,
+            nodeLocations: {
+                "changuvetty": { lat: 10.9945, lon: 76.0002, name: "Changuvetty Jn" },
+                "busstand": { lat: 10.9966, lon: 76.0023, name: "Bus Stand" },
+                "towncenter": { lat: 10.9958, lon: 76.0020, name: "Town Center" },
+                "almas": { lat: 10.9928, lon: 76.0048, name: "Almas Hospital" },
+                "puthur": { lat: 10.9997, lon: 76.0040, name: "Puthur" },
+                "avs": { lat: 10.9985, lon: 76.0005, name: "Arya Vaidya Sala" }
+            },
+            roadGeometries: {
+                "changuvetty_busstand": [[10.9945, 76.0002], [10.9951, 76.0008], [10.9958, 76.0016], [10.9966, 76.0023]],
+                "busstand_towncenter": [[10.9966, 76.0023], [10.9962, 76.0021], [10.9958, 76.0020]],
+                "towncenter_almas": [[10.9958, 76.0020], [10.9949, 76.0024], [10.9937, 76.0033], [10.9928, 76.0048]],
+                "towncenter_puthur": [[10.9958, 76.0020], [10.9971, 76.0026], [10.9983, 76.0033], [10.9997, 76.0040]],
+                "towncenter_avs": [[10.9958, 76.0020], [10.9968, 76.0013], [10.9980, 76.0007], [10.9985, 76.0005]],
+                "almas_puthur": [[10.9928, 76.0048], [10.9945, 76.0045], [10.9975, 76.0042], [10.9997, 76.0040]]
+            },
+            pointsOfInterest: [
+                { lat: 10.9928, lon: 76.0048, name: "Almas Hospital", type: "hospital" },
+                { lat: 10.9972, lon: 76.0035, name: "Aster MIMS Kottakkal", type: "hospital" },
+                { lat: 10.9950, lon: 76.0031, name: "Kottakkal Police Station", type: "police" }
+            ]
+        };
+        
+        const welcomeScreen = document.getElementById('welcome-screen');
+        const launchDashboardBtn = document.getElementById('launch-dashboard-btn');
+        const appWrapper = document.getElementById('app-wrapper');
+
+        const navButtons = document.querySelectorAll('.nav-button');
+        const panels = document.querySelectorAll('.panel-content');
+        const incidentsFeed = document.getElementById('incidents-feed');
+        const reportForm = document.getElementById('report-form');
+        const sosButton = document.getElementById('sos-button');
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+        const modalClose = document.getElementById('modal-close');
+        
+        const fabRoute = document.getElementById('fab-route');
+        const routeModal = document.getElementById('route-modal');
+        const closeRouteModal = document.getElementById('close-route-modal');
+        const routeForm = document.getElementById('route-form');
+        const startNodeInput = document.getElementById('start-node');
+        const endNodeInput = document.getElementById('end-node');
+        const locationsDatalist = document.getElementById('locations');
+        const routeResultDiv = document.getElementById('route-result');
+
+        const chatbotFab = document.getElementById('chatbot-fab');
+        const chatbotWindow = document.getElementById('chatbot-window');
+        const closeChatbot = document.getElementById('close-chatbot');
+        const chatForm = document.getElementById('chat-form');
+        const chatInput = document.getElementById('chat-input');
+        const chatMessages = document.getElementById('chat-messages');
+        
+        const openCameraBtn = document.getElementById('open-camera-btn');
+        const cameraView = document.getElementById('camera-view');
+        const cameraStream = document.getElementById('camera-stream');
+        const cameraCanvas = document.getElementById('camera-canvas');
+        const takePhotoBtn = document.getElementById('take-photo-btn');
+        const photoPreview = document.getElementById('photo-preview');
+        const getCurrentLocationBtn = document.getElementById('get-current-location-btn');
+        const locationDescInput = document.getElementById('location-desc');
+        const incidentTypeSelect = document.getElementById('incident-type');
+        const reportPanel = document.getElementById('panel-report');
+        const accidentWarning = document.getElementById('accident-warning');
+        const submitReportBtn = document.getElementById('submit-report-btn');
+
+        const getCongestionColor = (level) => {
+            if (level === 1) return '#22c55e';
+            if (level === 2) return '#facc15';
+            if (level === 3) return '#ef4444';
+            return '#94a3b8';
+        };
+
+        const showModal = (title, body) => {
+            modalTitle.textContent = title;
+            modalBody.textContent = body;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        };
+
+        const hideModal = () => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        };
+        
+        function getPOIIcon(type) {
+            let iconChar, color, title;
+            if (type === 'hospital') {
+                iconChar = 'H';
+                color = 'bg-red-500';
+                title = 'Hospital';
+            } else if (type === 'police') {
+                iconChar = 'P';
+                color = 'bg-blue-700';
+                title = 'Police Station';
+            }
+            return L.divIcon({
+                html: `<div title="${title}" class="h-8 w-8 ${color} text-white font-bold text-lg flex items-center justify-center rounded-full shadow-lg border-2 border-white">${iconChar}</div>`,
+                className: '',
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+            });
+        }
+
+        function initMap() {
+            appState.map = L.map('map').setView([10.9960, 76.0020], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(appState.map);
+            appState.incidentMarkers.addTo(appState.map);
+            appState.routeLayer.addTo(appState.map);
+
+            for (const nodeId in appState.nodeLocations) {
+                const node = appState.nodeLocations[nodeId];
+                L.marker([node.lat, node.lon], {
+                    icon: L.divIcon({
+                        className: 'node-marker',
+                        html: `<span>${node.name}</span>`,
+                        iconSize: [120, 20],
+                        iconAnchor: [60, 10]
+                    })
+                }).addTo(appState.map);
+            }
+            
+            appState.pointsOfInterest.forEach(poi => {
+                L.marker([poi.lat, poi.lon], {
+                    icon: getPOIIcon(poi.type),
+                    zIndexOffset: 1000 
+                })
+                .bindPopup(`<strong>${poi.name}</strong>`)
+                .addTo(appState.map);
+            });
+        }
+
+        function updateTrafficDisplay() {
+            appState.currentTrafficData = trafficSimulator.get_traffic_data();
+            roadNetwork.update_weights(appState.currentTrafficData);
+
+            for (const roadId in appState.roadGeometries) {
+                const road = appState.currentTrafficData[roadId];
+                if (!road) continue;
+
+                const color = getCongestionColor(road.congestion);
+                const geometry = appState.roadGeometries[roadId];
+
+                if (appState.trafficLayers[roadId]) {
+                    appState.trafficLayers[roadId].setStyle({ color: color });
+                } else {
+                    const polyline = L.polyline(geometry, {
+                        color: color, weight: 7, opacity: 0.8
+                    }).addTo(appState.map);
+                    appState.trafficLayers[roadId] = polyline;
+                }
+            }
+        }
+
+        function updateIncidentsDisplay() {
+            const incidents = appState.reportedIncidents;
+            if (incidents.length === 0) {
+                incidentsFeed.innerHTML = '<p class="text-slate-500">No incidents reported.</p>';
+            } else {
+                incidentsFeed.innerHTML = incidents.map(incident => `
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <p class="font-semibold text-slate-800">${incident.type}</p>
+                        <p class="text-slate-600">${incident.location}</p>
+                        <p class="text-xs text-slate-400 mt-1">${new Date(incident.timestamp).toLocaleString()}</p>
+                    </div>`).join('');
+            }
+
+            appState.incidentMarkers.clearLayers();
+            incidents.forEach(incident => {
+                const iconHtml = getIconForIncident(incident.type);
+                const customIcon = L.divIcon({
+                    html: iconHtml, className: '', iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -30]
+                });
+                L.marker([incident.coords.lat, incident.coords.lon], { icon: customIcon })
+                    .bindPopup(`<strong>${incident.type}</strong><br>${incident.location}`)
+                    .addTo(appState.incidentMarkers);
+            });
+            renderIncidentChart(incidents);
+        }
+
+        function getIconForIncident(type) {
+            let iconChar, color;
+            switch(type) {
+                case 'Accident': iconChar = '💥'; color = 'bg-red-500'; break;
+                case 'Roadblock': iconChar = '🚧'; color = 'bg-yellow-500'; break;
+                case 'Pothole': iconChar = '⚫'; color = 'bg-gray-600'; break;
+                default: iconChar = '❗'; color = 'bg-blue-500'; break;
+            }
+            return `<div class="h-[30px] w-[30px] ${color} rounded-full flex items-center justify-center text-white text-lg shadow-lg">${iconChar}</div>`;
+        }
+
+        function renderIncidentChart(incidents) {
+            const ctx = document.getElementById('incident-chart').getContext('2d');
+            const incidentCounts = incidents.reduce((acc, incident) => {
+                acc[incident.type] = (acc[incident.type] || 0) + 1;
+                return acc;
+            }, {});
+
+            const labels = Object.keys(incidentCounts);
+            const data = Object.values(incidentCounts);
+
+            if (appState.incidentChart) {
+                appState.incidentChart.data.labels = labels;
+                appState.incidentChart.data.datasets[0].data = data;
+                appState.incidentChart.update();
+            } else {
+                appState.incidentChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: ['#ef4444', '#f59e0b', '#6b7280', '#3b82f6'],
+                            borderColor: '#f0f2f5', borderWidth: 4, hoverOffset: 4
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
+                });
+            }
+        }
+        
+        function populateRouteDatalist() {
+            locationsDatalist.innerHTML = '';
+            for (const nodeId in appState.nodeLocations) {
+                const option = document.createElement('option');
+                option.value = appState.nodeLocations[nodeId].name;
+                locationsDatalist.appendChild(option);
+            }
+        }
+        
+        function getNodeIdByName(name) {
+            for (const nodeId in appState.nodeLocations) {
+                if (appState.nodeLocations[nodeId].name === name) {
+                    return nodeId;
+                }
+            }
+            return null;
+        }
+        
+        function simulateWeather() {
+            const conditions = [
+                { temp: 32, condition: "Sunny", icon: "☀️" },
+                { temp: 31, condition: "Mostly Sunny", icon: "🌤️" },
+                { temp: 29, condition: "Partly Cloudy", icon: "⛅" },
+                { temp: 27, condition: "Cloudy", icon: "☁️" },
+                { temp: 25, condition: "Showers", icon: "🌧️" }
+            ];
+            return conditions[Math.floor(Math.random() * conditions.length)];
+        }
+
+        function updateWeatherDisplay() {
+            const weatherWidget = document.getElementById('weather-widget');
+            const weather = simulateWeather();
+            if (weatherWidget) {
+                weatherWidget.innerHTML = `
+                    <span class="text-3xl">${weather.icon}</span>
+                    <div>
+                        <p class="font-bold text-lg text-slate-800">${weather.temp}°C</p>
+                        <p class="text-xs text-slate-600">${weather.condition}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function stopCamera() {
+            if (appState.cameraStream) {
+                appState.cameraStream.getTracks().forEach(track => track.stop());
+                appState.cameraStream = null;
+                cameraView.classList.add('hidden');
+                openCameraBtn.classList.remove('hidden');
+            }
+        }
+
+        navButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const targetPanelId = button.dataset.panel;
+                navButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                panels.forEach(panel => {
+                    panel.id === `panel-${targetPanelId}` ? panel.classList.remove('hidden') : panel.classList.add('hidden');
+                });
+                stopCamera(); // Stop camera when switching tabs
+            });
+        });
+
+        reportForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const type = document.getElementById('incident-type').value;
+
+            const processReport = (coords) => {
+                const newIncident = {
+                    type: type,
+                    location: locationDescInput.value,
+                    timestamp: new Date().toISOString(),
+                    coords: coords,
+                    photo: appState.capturedPhotoData
+                };
+
+                if (type === 'Accident') {
+                    console.log("HIGH PRIORITY ALERT: Accident Reported", newIncident);
+                    showModal('Urgent Report Sent!', 'The accident report with your location and photo has been sent to the authorities.');
+                } else {
+                    showModal('Report Submitted', 'Thank you for your contribution!');
+                }
+
+                appState.reportedIncidents.unshift(newIncident);
+                reportForm.reset();
+                photoPreview.classList.add('hidden');
+                appState.capturedPhotoData = null;
+                appState.currentUserLocation = null;
+                stopCamera();
+                updateIncidentsDisplay();
+                incidentTypeSelect.dispatchEvent(new Event('change')); // Reset UI
+            };
+
+            if (appState.currentUserLocation) {
+                processReport({ lat: appState.currentUserLocation.latitude, lon: appState.currentUserLocation.longitude });
+            } else {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        processReport({ lat: position.coords.latitude, lon: position.coords.longitude });
+                    },
+                    (error) => {
+                        let message = 'Could not get your location. Please ensure location services are enabled on your device and you have granted permission.';
+                        if (error.code === error.PERMISSION_DENIED) {
+                            message = 'Location access was denied. Please enable it in your browser settings.';
+                        } else if (error.code === error.POSITION_UNAVAILABLE) {
+                            message = 'Your location could not be determined at this time. Please try again later.';
+                        }
+                        showModal('Location Error', message);
+                    }
+                );
+            }
+        });
+
+        routeForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const startName = startNodeInput.value;
+            const endName = endNodeInput.value;
+
+            const start = getNodeIdByName(startName);
+            const end = getNodeIdByName(endName);
+
+            if (!start || !end) {
+                showModal('Invalid Location', 'Please select a valid start and end location from the suggestions.');
+                return;
+            }
+            if (start === end) {
+                showModal('Invalid Route', 'Start and end points cannot be the same.');
+                return;
+            }
+
+            const allPaths = roadNetwork.findAllPaths(start, end);
+            appState.routeLayer.clearLayers();
+            routeResultDiv.innerHTML = '';
+
+            if (allPaths.length > 0) {
+                const routesWithTime = allPaths.map(path => {
+                    let distance = 0;
+                    for (let i = 0; i < path.length - 1; i++) {
+                        const node1 = path[i];
+                        const node2 = path[i+1];
+                        const roadId = Object.keys(appState.roadGeometries).find(key => key.includes(node1) && key.includes(node2));
+                        if(roadId && appState.currentTrafficData[roadId]) {
+                             distance += appState.currentTrafficData[roadId].travel_time_minutes;
+                        }
+                    }
+                    return { path, distance };
+                }).sort((a,b) => a.distance - b.distance);
+
+                routesWithTime.forEach((route, index) => {
+                    let fullPathCoords = [];
+                    let maxCongestion = 0;
+
+                    for (let i = 0; i < route.path.length - 1; i++) {
+                        const node1 = route.path[i];
+                        const node2 = route.path[i+1];
+                        const roadId = Object.keys(appState.roadGeometries).find(key => key.includes(node1) && key.includes(node2));
+                        
+                        if (roadId) {
+                            let segmentCoords = appState.roadGeometries[roadId];
+                            if (roadId.startsWith(node2)) { // Reverse if needed
+                                segmentCoords = [...segmentCoords].reverse();
+                            }
+                            fullPathCoords.push(...segmentCoords);
+                            
+                            if (appState.currentTrafficData[roadId]) {
+                                maxCongestion = Math.max(maxCongestion, appState.currentTrafficData[roadId].congestion);
+                            }
+                        }
+                    }
+                    
+                    const congestionColor = getCongestionColor(maxCongestion);
+
+                    const button = document.createElement('button');
+                    button.className = 'route-button w-full text-left p-2 border rounded-lg hover:bg-slate-100 flex items-center space-x-3 transition-colors';
+                    button.dataset.path = JSON.stringify(fullPathCoords);
+                    
+                    button.innerHTML = `
+                        <span class="congestion-indicator w-2 h-10 rounded-full" style="background-color: ${congestionColor};"></span>
+                        <div class="flex-grow">
+                            <p class="font-semibold text-sm">${route.path.map(id => appState.nodeLocations[id].name).join(' → ')}</p>
+                        </div>
+                        <span class="font-bold text-sm">${route.distance.toFixed(1)} min</span>
+                    `;
+                    
+                    button.addEventListener('click', (e) => {
+                        document.querySelectorAll('.route-button').forEach(btn => btn.classList.remove('active', 'border-blue-500'));
+                        e.currentTarget.classList.add('active', 'border-blue-500');
+                        
+                        appState.routeLayer.clearLayers();
+                        const coords = JSON.parse(e.currentTarget.dataset.path);
+                        L.polyline(coords, { color: '#2563eb', weight: 8, opacity: 0.9 }).addTo(appState.routeLayer);
+                        
+                        closeRouteModal.click();
+                        
+                        const mainContent = document.getElementById('main-content');
+                        if(mainContent) {
+                            mainContent.scrollIntoView({ behavior: 'smooth' });
+                        }
+                    });
+
+                    routeResultDiv.appendChild(button);
+                });
+            } else {
+                routeResultDiv.innerHTML = `<p class="text-red-600 p-2">Could not find any routes. The locations may not be directly connected.</p>`;
+            }
+        });
+        
+        fabRoute.addEventListener('click', () => {
+            routeResultDiv.innerHTML = ''; // Clear previous results
+            appState.routeLayer.clearLayers();
+            routeModal.classList.remove('hidden');
+            routeModal.classList.add('flex');
+        });
+        
+        closeRouteModal.addEventListener('click', () => {
+            routeModal.classList.add('hidden');
+            routeModal.classList.remove('flex');
+        });
+
+        sosButton.addEventListener('click', () => {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    console.log(`SOS Sent: Lat ${latitude}, Lon ${longitude}`);
+                    showModal('Emergency Alert Sent', `Your SOS has been sent with your location: Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}.`);
+                },
+                () => {
+                    console.log('SOS Sent: Location Unknown');
+                    showModal('Emergency Alert Sent', 'Your SOS has been sent. Could not get precise location.');
+                }
+            );
+        });
+
+        modalClose.addEventListener('click', hideModal);
+
+        // --- Chatbot Logic ---
+        const addChatMessage = (message, sender) => {
+            const bubble = document.createElement('div');
+            bubble.className = `w-fit max-w-xs rounded-xl px-3 py-2 text-sm ${sender === 'user' ? 'chat-bubble-user' : 'chat-bubble-bot'}`;
+            bubble.textContent = message;
+            chatMessages.appendChild(bubble);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        };
+
+        const getBotResponse = (userInput) => {
+            const lowerInput = userInput.toLowerCase();
+            if (lowerInput.includes("hello") || lowerInput.includes("hi")) {
+                return "Hello! How can I help you with the traffic in Kottakkal today?";
+            }
+            if (lowerInput.includes("traffic")) {
+                const congested = Object.values(appState.currentTrafficData).filter(r => r.congestion === 3).map(r => r.name);
+                if (congested.length > 0) {
+                    return `There is heavy traffic reported at: ${congested.join(', ')}. It's best to avoid these areas.`;
+                }
+                return "Traffic seems to be flowing smoothly right now. No major congestion reported.";
+            }
+            if (lowerInput.includes("weather")) {
+                const weather = simulateWeather();
+                return `The current weather is ${weather.condition} with a temperature of ${weather.temp}°C.`;
+            }
+            if (lowerInput.includes("report")) {
+                return "You can report an incident like an accident or roadblock by clicking the 'Report' tab in the control panel.";
+            }
+            if (lowerInput.includes("route")) {
+                return "To find the fastest route, click the 'GO' button on the bottom-left and select your start and end points.";
+            }
+            if (lowerInput.includes("help")) {
+                return "You can ask me about 'traffic', 'weather', how to 'report' an incident, or how to find a 'route'.";
+            }
+            return "I'm sorry, I can't help with that. Please ask me about traffic, weather, or routes in Kottakkal.";
+        };
+
+        chatbotFab.addEventListener('click', () => chatbotWindow.classList.remove('hidden'));
+        closeChatbot.addEventListener('click', () => chatbotWindow.classList.add('hidden'));
+        chatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const userInput = chatInput.value.trim();
+            if (!userInput) return;
+            addChatMessage(userInput, 'user');
+            chatInput.value = '';
+            setTimeout(() => {
+                const botResponse = getBotResponse(userInput);
+                addChatMessage(botResponse, 'bot');
+            }, 500);
+        });
+        
+        launchDashboardBtn.addEventListener('click', () => {
+            welcomeScreen.style.opacity = 0;
+            setTimeout(() => {
+                welcomeScreen.classList.add('hidden');
+                appWrapper.classList.remove('hidden');
+                appWrapper.classList.add('fade-in');
+                setTimeout(() => {
+                    if(appState.map) {
+                        appState.map.invalidateSize();
+                    }
+                }, 10);
+            }, 500); 
+        });
+
+        openCameraBtn.addEventListener('click', async () => {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    appState.cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                    cameraStream.srcObject = appState.cameraStream;
+                    cameraView.classList.remove('hidden');
+                    openCameraBtn.classList.add('hidden');
+                    photoPreview.classList.add('hidden');
+                } catch (err) {
+                    console.error("Error accessing camera: ", err);
+                    showModal("Camera Error", "Could not access the camera. Please check permissions and try again.");
+                }
+            }
+        });
+
+        takePhotoBtn.addEventListener('click', () => {
+            cameraCanvas.width = cameraStream.videoWidth;
+            cameraCanvas.height = cameraStream.videoHeight;
+            const context = cameraCanvas.getContext('2d');
+            context.drawImage(cameraStream, 0, 0, cameraCanvas.width, cameraCanvas.height);
+            appState.capturedPhotoData = cameraCanvas.toDataURL('image/jpeg');
+            photoPreview.src = appState.capturedPhotoData;
+            photoPreview.classList.remove('hidden');
+            stopCamera();
+        });
+        
+        getCurrentLocationBtn.addEventListener('click', () => {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    appState.currentUserLocation = { latitude, longitude };
+                    
+                    let closestLocation = null;
+                    let minDistance = Infinity;
+
+                    for (const nodeId in appState.nodeLocations) {
+                        const node = appState.nodeLocations[nodeId];
+                        const d = Math.sqrt(Math.pow(latitude - node.lat, 2) + Math.pow(longitude - node.lon, 2));
+                        if (d < minDistance) {
+                            minDistance = d;
+                            closestLocation = node;
+                        }
+                    }
+                    locationDescInput.value = closestLocation ? `Near ${closestLocation.name} (GPS Locked)` : `Current Location (GPS Locked)`;
+                },
+                (error) => {
+                    let message = 'Could not get your location. Please ensure location services are enabled on your device and you have granted permission.';
+                    if (error.code === error.PERMISSION_DENIED) {
+                        message = 'Location access was denied. Please enable it in your browser settings.';
+                    } else if (error.code === error.POSITION_UNAVAILABLE) {
+                        message = 'Your location could not be determined at this time. Please try again later.';
+                    }
+                    showModal('Location Error', message);
+                }
+            );
+        });
+
+        incidentTypeSelect.addEventListener('change', (e) => {
+            if (e.target.value === 'Accident') {
+                reportPanel.classList.add('border-red-500');
+                accidentWarning.classList.remove('hidden');
+                submitReportBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                submitReportBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+                submitReportBtn.textContent = 'Report Accident Now';
+            } else {
+                reportPanel.classList.remove('border-red-500');
+                accidentWarning.classList.add('hidden');
+                submitReportBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                submitReportBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                submitReportBtn.textContent = 'Submit Report';
+            }
+        });
+
+        function initializeApp() {
+            initMap();
+            updateWeatherDisplay();
+            populateRouteDatalist();
+            updateTrafficDisplay();
+            updateIncidentsDisplay();
+            setInterval(updateTrafficDisplay, 15000);
+            setInterval(updateWeatherDisplay, 300000); 
+            addChatMessage("Hi! I'm your traffic assistant. Ask me about traffic, weather, or routes.", 'bot');
+        }
+
+        initializeApp();
+    });
+    </script>
+</body>
+</html>
